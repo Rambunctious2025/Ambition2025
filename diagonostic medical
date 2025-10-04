@@ -1,0 +1,118 @@
+import sqlite3
+import os
+
+# --- Configuration ---
+DATABASE_NAME = 'dsm_disorders.db'
+
+# --- Database Functions ---
+
+def create_connection(db_file):
+    """Create a database connection to the SQLite database specified by db_file."""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        return conn
+    except sqlite3.Error as e:
+        print(f"Error connecting to database: {e}")
+    return conn
+
+def create_tables(conn):
+    """Create the necessary tables for the DSM database."""
+    # 1. Categories Table (e.g., Depressive Disorders, Anxiety Disorders)
+    sql_create_categories_table = """
+    CREATE TABLE IF NOT EXISTS Categories (
+        category_id INTEGER PRIMARY KEY,
+        category_name TEXT NOT NULL UNIQUE,
+        description_summary TEXT
+    );
+    """
+
+    # 2. Disorders Table (The main DSM diagnoses)
+    sql_create_disorders_table = """
+    CREATE TABLE IF NOT EXISTS Disorders (
+        disorder_id INTEGER PRIMARY KEY,
+        category_id INTEGER NOT NULL,
+        disorder_name TEXT NOT NULL UNIQUE,
+        icd_code TEXT, -- Corresponding ICD code
+        prevalence_notes TEXT,
+        FOREIGN KEY (category_id) REFERENCES Categories (category_id)
+    );
+    """
+
+    # 3. Diagnostic Criteria Table (The bullet points for diagnosis)
+    sql_create_criteria_table = """
+    CREATE TABLE IF NOT EXISTS Criteria (
+        criteria_id INTEGER PRIMARY KEY,
+        disorder_id INTEGER NOT NULL,
+        criteria_set TEXT NOT NULL, -- e.g., 'Criterion A', 'Criterion B'
+        criteria_text TEXT NOT NULL, -- The actual text of the bullet point
+        is_specifier BOOLEAN NOT NULL DEFAULT 0, -- 1 if it's a specifier, 0 otherwise
+        FOREIGN KEY (disorder_id) REFERENCES Disorders (disorder_id)
+    );
+    """
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql_create_categories_table)
+        cursor.execute(sql_create_disorders_table)
+        cursor.execute(sql_create_criteria_table)
+        conn.commit()
+        print("DSM database tables created successfully. 🧠")
+    except sqlite3.Error as e:
+        print(f"Error creating tables: {e}")
+
+def insert_sample_data(conn):
+    """Insert a small amount of sample data (Major Depressive Disorder) to test the structure."""
+    cursor = conn.cursor()
+
+    # 1. Insert Category
+    category_data = [
+        ('Depressive Disorders', 'Characterized by sadness severe enough or persistent enough to interfere with function.'),
+    ]
+    cursor.executemany("INSERT INTO Categories (category_name, description_summary) VALUES (?, ?)", category_data)
+    conn.commit()
+    
+    # Get the ID of the inserted category
+    cursor.execute("SELECT category_id FROM Categories WHERE category_name='Depressive Disorders'")
+    depressive_category_id = cursor.fetchone()[0]
+
+    # 2. Insert Disorder (Major Depressive Disorder - MDD)
+    disorder_data = [
+        (depressive_category_id, 'Major Depressive Disorder, Single Episode', 'F32.9', 'Lifetime prevalence is about 20% in the US.'),
+    ]
+    cursor.executemany("INSERT INTO Disorders (category_id, disorder_name, icd_code, prevalence_notes) VALUES (?, ?, ?, ?)", disorder_data)
+    conn.commit()
+    
+    # Get the ID of the inserted disorder
+    cursor.execute("SELECT disorder_id FROM Disorders WHERE disorder_name='Major Depressive Disorder, Single Episode'")
+    mdd_disorder_id = cursor.fetchone()[0]
+
+    # 3. Insert Diagnostic Criteria (Sample from MDD Criterion A)
+    criteria_data = [
+        (mdd_disorder_id, 'Criterion A', 'Depressed mood most of the day, nearly every day.', 0),
+        (mdd_disorder_id, 'Criterion A', 'Markedly diminished interest or pleasure in all, or almost all, activities most of the day, nearly every day.', 0),
+        (mdd_disorder_id, 'Criterion A', 'Significant weight loss when not dieting or weight gain, or decrease or increase in appetite nearly every day.', 0),
+        (mdd_disorder_id, 'Specifier', 'With anxious distress.', 1),
+    ]
+    cursor.executemany("INSERT INTO Criteria (disorder_id, criteria_set, criteria_text, is_specifier) VALUES (?, ?, ?, ?)", criteria_data)
+
+    conn.commit()
+    print("Sample data inserted. 📝")
+
+def main():
+    """Main function to run the database setup."""
+    # Clean up previous database file (optional, for fresh runs)
+    if os.path.exists(DATABASE_NAME):
+         os.remove(DATABASE_NAME)
+
+    conn = create_connection(DATABASE_NAME)
+
+    if conn is not None:
+        create_tables(conn)
+        insert_sample_data(conn)
+        conn.close()
+    else:
+        print("Could not establish database connection.")
+
+if __name__ == '__main__':
+    main()
