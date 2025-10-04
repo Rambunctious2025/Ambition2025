@@ -1,1 +1,138 @@
+import sqlite3
+import os
 
+# --- Configuration ---
+DATABASE_NAME = 'gale_medicine_encyclopedia.db'
+
+# --- Database Functions ---
+
+def create_connection(db_file):
+    """Create a database connection to the SQLite database specified by db_file."""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        return conn
+    except sqlite3.Error as e:
+        print(f"Error connecting to database: {e}")
+    return conn
+
+def create_tables(conn):
+    """Create the necessary tables for the encyclopedia database."""
+    # Table definitions (using SQL CREATE TABLE statements)
+
+    # 1. Main Conditions Table
+    sql_create_conditions_table = """
+    CREATE TABLE IF NOT EXISTS Conditions (
+        condition_id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description_summary TEXT
+    );
+    """
+
+    # 2. Detailed Articles Table (The main encyclopedia entries)
+    sql_create_articles_table = """
+    CREATE TABLE IF NOT EXISTS Articles (
+        article_id INTEGER PRIMARY KEY,
+        condition_id INTEGER NOT NULL,
+        section_title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        FOREIGN KEY (condition_id) REFERENCES Conditions (condition_id)
+    );
+    """
+
+    # 3. Treatments/Interventions Table
+    sql_create_treatments_table = """
+    CREATE TABLE IF NOT EXISTS Treatments (
+        treatment_id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT -- e.g., 'Drug', 'Procedure', 'Therapy', 'Lifestyle'
+    );
+    """
+
+    # 4. Relationship Table (Many-to-Many link between Conditions and Treatments)
+    sql_create_condition_treatment_table = """
+    CREATE TABLE IF NOT EXISTS Condition_Treatment (
+        condition_id INTEGER NOT NULL,
+        treatment_id INTEGER NOT NULL,
+        notes TEXT,
+        PRIMARY KEY (condition_id, treatment_id),
+        FOREIGN KEY (condition_id) REFERENCES Conditions (condition_id),
+        FOREIGN KEY (treatment_id) REFERENCES Treatments (treatment_id)
+    );
+    """
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql_create_conditions_table)
+        cursor.execute(sql_create_articles_table)
+        cursor.execute(sql_create_treatments_table)
+        cursor.execute(sql_create_condition_treatment_table)
+        conn.commit()
+        print("Database tables created successfully. 🛠️")
+    except sqlite3.Error as e:
+        print(f"Error creating tables: {e}")
+
+def insert_sample_data(conn):
+    """Insert a small amount of sample data to test the structure."""
+    cursor = conn.cursor()
+
+    # 1. Insert Conditions
+    conditions_data = [
+        ('Migraine', 'A neurological condition characterized by recurrent moderate to severe headaches.'),
+        ('Type 2 Diabetes', 'A chronic condition that affects the way the body processes blood sugar (glucose).'),
+    ]
+    cursor.executemany("INSERT INTO Conditions (name, description_summary) VALUES (?, ?)", conditions_data)
+
+    # Get the IDs of the inserted conditions
+    cursor.execute("SELECT condition_id FROM Conditions WHERE name='Migraine'")
+    migraine_id = cursor.fetchone()[0]
+
+    # 2. Insert Treatments
+    treatments_data = [
+        ('Ibuprofen', 'Drug'),
+        ('Sumatriptan', 'Drug'),
+        ('Metformin', 'Drug'),
+        ('Dietary Changes', 'Lifestyle'),
+    ]
+    cursor.executemany("INSERT INTO Treatments (name, type) VALUES (?, ?)", treatments_data)
+
+    # Get the IDs of the inserted treatments
+    cursor.execute("SELECT treatment_id FROM Treatments WHERE name='Sumatriptan'")
+    sumatriptan_id = cursor.fetchone()[0]
+    cursor.execute("SELECT treatment_id FROM Treatments WHERE name='Metformin'")
+    metformin_id = cursor.fetchone()[0]
+
+    # 3. Insert Articles (Sections for a condition)
+    articles_data = [
+        (migraine_id, 'Causes', 'While the exact cause is unknown, genetics and environmental factors are thought to play a role...'),
+        (migraine_id, 'Diagnosis', 'Diagnosis is typically based on patient history and symptom description.'),
+    ]
+    cursor.executemany("INSERT INTO Articles (condition_id, section_title, content) VALUES (?, ?, ?)", articles_data)
+
+    # 4. Link Conditions to Treatments
+    condition_treatment_data = [
+        (migraine_id, sumatriptan_id, 'Used for acute treatment of migraine attacks.'),
+        (2, metformin_id, 'Primary medication to improve blood sugar control for Type 2 Diabetes.'),
+    ]
+    cursor.executemany("INSERT INTO Condition_Treatment (condition_id, treatment_id, notes) VALUES (?, ?, ?)", condition_treatment_data)
+
+    conn.commit()
+    print("Sample data inserted. 📚")
+
+def main():
+    """Main function to run the database setup."""
+    # Clean up previous database file (optional, for fresh runs)
+    if os.path.exists(DATABASE_NAME):
+         os.remove(DATABASE_NAME)
+
+    conn = create_connection(DATABASE_NAME)
+
+    if conn is not None:
+        create_tables(conn)
+        insert_sample_data(conn)
+        conn.close()
+    else:
+        print("Could not establish database connection.")
+
+if __name__ == '__main__':
+    main()
